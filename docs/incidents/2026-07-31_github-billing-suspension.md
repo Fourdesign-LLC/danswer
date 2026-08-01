@@ -10,8 +10,23 @@
 |---|---|
 | ワークフロー定義 | 10本すべて `state: active`（`pr-python-checks.yml`, `run-it.yml`, `docker-build-push-*` ほか） |
 | ワークフロー実行履歴 | **0件**（API `list_workflow_runs` → `total_count: 0`） |
+| `danswer` の可視性 | **public**（`onyx-dot-app/danswer` からの fork） |
+| Org の他リポジトリ | `owlcas-exporter` `tnp-app` `CommandLineTools` `toss-nas-putter` ほか **private**（全30リポジトリ） |
 
-定義は生きているのに実行が1件も記録されていない。ワークフロー無効化ではなく、**ジョブのスケジューリング段階で課金ブロックされている**状態と整合する。
+### 重要: `danswer` の実行0件は課金停止の証拠にならない
+
+**public リポジトリの Actions は GitHub-hosted standard runner で無料枠無制限**。したがって
+`danswer`（public）は、予算 $0 でも未払いがあっても Actions は止まらない。
+
+`danswer` で実行0件になる原因は課金とは別系統:
+
+- fork では Actions が既定で無効。Actions タブに `I understand my workflows, go ahead and enable them` ボタンが出る
+  （ただし本リポジトリのワークフローは `disabled_fork` ではなく `active` なので、この線は薄い）
+- Organization レベルの Actions ポリシーが `Disable actions` になっている
+- Org 全体の課金ロックにより public を含めて全リポジトリが停止している
+
+**課金による停止が実害として効くのは private リポジトリ側**（Free プランの無料枠は private 向け 2,000分/月）。
+Org の大半が private なので、業務影響はそちらに出ている。
 
 ## 前提: 3つの原因パターン
 
@@ -58,7 +73,32 @@ Organization 側の画面には「請求は Enterprise で管理されていま�
 
 ## STEP 1: 未払い請求を精算する（パターンA）
 
-### 画面遷移
+### まず前提: 「Latest invoice」はサイドバーのメニューではない
+
+**Latest invoice は Overview ページ本文中のセクション**であって、左サイドバーの項目ではない。
+サイドバーを探しても見つからないのが正常。Overview ページ本体を上から見ること。
+
+### 「Latest invoice」セクション自体が存在しない場合 → パターンAは除外
+
+Overview 本文にも見当たらないなら、それは異常ではなく **請求が1件も発生していない**ことを意味する。
+以下のいずれかに該当する。
+
+| 表示 | 意味 | 次の行動 |
+|---|---|---|
+| `Estimated next payment` と表示 | 未払いはなく、次回請求予定額を表示中 | パターンA除外 → **STEP 3 へ** |
+| セクション自体が無い / $0.00 | Free プランで課金実績なし | パターンA除外 → **STEP 3 へ** |
+| 「請求は Enterprise で管理」の旨 | Enterprise 配下 | Enterprise 側の課金画面へ（STEP 0 参照） |
+
+**これは重要な切り分け**: 請求書が存在しない = GitHub は一度も課金していない
+= 「支払い失敗」ではあり得ない。**予算 $0 による強制停止（パターンB）が原因である可能性が極めて高い。**
+
+Free プランで予算 $0 の場合、無料枠(private 2,000分/月)を超えた時点でジョブが止まり、
+超過分は課金されない。だから**請求書が生成されず、未払いも発生しない**。
+「請求書が無いのに Actions が止まる」のはこの状態の典型的な見え方。
+
+→ **この場合は STEP 1 を飛ばして STEP 3（予算）へ進む。**
+
+### 請求書がある場合の画面遷移
 
 1. **Billing & Licensing** 画面の **Overview** タブ（開くと最初に表示される）
 2. **Latest invoice** セクションを見る
@@ -109,6 +149,18 @@ Organization 側の画面には「請求は Enterprise で管理されていま�
 ## STEP 3-新: 予算（Budgets and alerts）を $0 から上げる（パターンB）
 
 **サイドバーが「Billing & Licensing」の場合はこちら。**
+**「Latest invoice が無い」ケースの本命はここ。**
+
+### 先に無料枠の消費状況を確認する
+
+1. **Billing & Licensing** → 左サイドバー **Usage** をクリック
+2. 期間を今月（`This month`）にする
+3. 製品フィルタで **Actions** を選択
+4. **Included（無料枠）の 2,000分を使い切っていないか**を確認する
+
+使い切っていれば、予算 $0 で停止しているという診断が確定する。
+（Free プランの無料枠 2,000分/月は **private リポジトリのみ**が対象。public リポジトリの消費は
+ここにカウントされない）
 
 ### 既存予算を修正する場合
 
