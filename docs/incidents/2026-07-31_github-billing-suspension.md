@@ -4,6 +4,85 @@
 - 対象: GitHub Organization `Fourdesign-LLC`（リポジトリ `Fourdesign-LLC/danswer` ほか）
 - 症状: GitHub Actions のジョブが起動しない / `Actions are disabled due to payment issues.` または `The job was not started because recent account payments have failed or your spending limit needs to be increased.`
 
+## 追記2: 全社影響調査と復旧確認（2026-08-01）
+
+「GitHub停止で複数システムが数日止まった」という認識について、横断的に実地確認した。
+
+### 結論サマリー
+
+| 対象 | 停止したか | 現状 |
+|---|---|---|
+| **本番業務システム**（OWLCAS / RSManager / SHF Manager / Invoicing / PO Chat / Account Auth / OWLCAS API） | **停止していない** | 正常 |
+| **GitHub Actions**（private リポジトリ） | **7/29〜7/31 ブロックされていた** | **復旧済み（実測確認）** |
+| Codespaces / Git LFS | 予算$0で停止 | 復旧済み |
+
+### 1. 本番業務システムは一度も停止していない
+
+Slack `#_information_system` の日次ヘルスチェック（7/27・7/28・7/29・7/30・7/31）は**全項目 :white_check_mark:**。
+さらに 2026-08-01 10:50 JST 時点で OWLCAS MCP API を直接叩いて実地確認した:
+
+- 商品マスター **3,495件**（7/31ヘルスチェックと一致）
+- 顧客マスター **1,385件**（同上）
+- 8/1 の注文が既に記録済み（NALATA NALATA / USD 1,506）
+- `monthly_summary` 正常応答（7月実績: 売上 ¥5,670,557 / 受注 ¥7,192,961）
+
+**顧客影響ゼロ。売上・受注・出荷データの欠損なし。**
+
+### 2. GitHub Actions は実際にブロックされていた（stock-viewer で確定）
+
+`Fourdesign-LLC/stock-viewer`（private）の `Monthly Snapshot Batch` は
+毎月28〜31日 23:30 JST に起動する。実測:
+
+| 実行日 | 結果 | runner | steps | head_sha |
+|---|---|---|---|---|
+| 7/28 15:16 | success | `1000026517` 割当 | 9ステップ実行 | `0dda1a72` |
+| **7/29 16:00** | **failure** | **`0`（未割当）** | **配列なし** | `0dda1a72` |
+| **7/30 16:05** | **failure** | **`0`（未割当）** | **配列なし** | `0dda1a72` |
+| **7/31 16:15** | **failure** | **`0`（未割当）** | **配列なし** | `5f8b66bd` |
+
+**同一コミット `0dda1a72` で 7/28 は成功し 7/29 は失敗している。コードは1文字も変わっていない。**
+`runner_id: 0` / `steps` 配列なし / 2秒で終了は、**ジョブがランナーに配られなかった**署名であり、
+`The job was not started because recent account payments have failed or your spending limit needs to be increased.`
+と同じ状態。`Prd Migration`（7/31 の2回）も同じく `runner_id: 0` で未起動。
+
+`stock-viewer` は **private** のため Free プランの無料枠（private 2,000分/月）を消費する。
+public の `danswer` が無傷だったのと対照的で、**public/private の差がそのまま被害の有無に出ている**。
+
+### 3. 復旧確認（実測）
+
+予算修正後、7/30 の失敗ラン（`30559834155`）を再実行した:
+
+- `run_attempt: 2` / `run_started_at: 2026-08-01T01:54:35Z` / **`conclusion: success`**
+
+**ランナーが割り当てられ完走した。GitHub Actions は復旧済み。**
+
+### 4. 実害と回復可能性
+
+| 事象 | 実害 | 回復 |
+|---|---|---|
+| 7/29・7/30 のバッチ失敗 | **なし** | 月末判定で実処理をスキップする日のため無害 |
+| **7/31 のバッチ失敗** | **7月分の月末スナップショット未生成** | **後述のとおり現状コードでは再現不可** |
+| Prd Migration 2件失敗 | **なし** | マイグレーションファイルは `2025-03-27-0` が最新で新規なし。7/31のコミットも「DBマイグレーション不要」と明記 |
+
+#### 7月末スナップショットが再生成できない理由
+
+`lib/snapshot/generate.ts` の実装:
+
+```ts
+const now = dayjs();
+const date = now.format("YYYY-MM-DD");
+```
+
+- **日付を外から渡す口がない。** 実行時刻がそのままスナップショット日付になる
+- `fetchDashboardData(db, makerCode)` は**現在のDBを読む**。今実行して取れるのは
+  8/1 時点の在庫であって 7/31 23:30 時点の在庫ではない
+- `sendAllSnapshotsByEmail()` により**メーカー各社へメールが飛ぶ**（外部への送信）
+
+したがって「7/31 時点の在庫を持つ 7月末スナップショット」は**技術的に復元できない**。
+7/31 23:30 以降に在庫変動が無ければ実質同等のものは作れるが、それは業務判断。
+
+---
+
 ## 追記: 復旧完了（2026-07-31）
 
 Budgets and alerts 画面で復旧を確認。**4製品すべて 100% バッジが消え、バーがグレーに戻った。**
