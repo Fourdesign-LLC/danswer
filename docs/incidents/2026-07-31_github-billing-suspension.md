@@ -4,6 +4,32 @@
 - 対象: GitHub Organization `Fourdesign-LLC`（リポジトリ `Fourdesign-LLC/danswer` ほか）
 - 症状: GitHub Actions のジョブが起動しない / `Actions are disabled due to payment issues.` または `The job was not started because recent account payments have failed or your spending limit needs to be increased.`
 
+## 追記: 復旧完了（2026-07-31）
+
+Budgets and alerts 画面で復旧を確認。**4製品すべて 100% バッジが消え、バーがグレーに戻った。**
+
+| 製品 | 対応前 | 対応後 | 状態 |
+|---|---|---|---|
+| Git LFS | **$0**（100%・停止） | **$10.00** | 復旧 |
+| Codespaces | **$0**（100%・停止） | **$20.00** | 復旧 |
+| Packages | $30.00 | $30.00 | 変更なし（元から正常） |
+| Actions | $30.00 | $30.00 | 変更なし（元から正常） |
+
+`Stop usage: Yes` は4製品とも維持。上限の歯止めを残したまま停止を解除できている。
+`spent` は全製品 $0 のため、当面この予算額で枯渇する見込みはない。
+
+### 未解決として残る論点
+
+**`danswer` のワークフロー実行が0件である件は本件とは別問題。** Actions は元から予算 $30 /
+消費 $0 で、課金ブロックを受けていなかった。原因は以下のいずれかで、必要になった時点で切り分ける。
+
+- Organization の Actions ポリシーが `Disable actions`（Org **Settings** → **Policies** → **Actions**）
+- fork のため Actions が未有効化
+- 単にトリガー条件を満たすイベントが発生していないだけ（`danswer` は public fork のため
+  Actions 自体は無料枠無制限で、そもそも課金の影響を受けない）
+
+---
+
 ## 確定診断（2026-07-31 Budgets and alerts 画面で確認）
 
 `Fourdesign-LLC` の **Budgets and alerts** に Organization budget が4件。実測値は以下。
